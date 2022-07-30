@@ -1,0 +1,2 @@
+,model_name,RMSE_train_score,RMSE_eval_score,RMSE_test_score
+0,Ridge,5.060817392464518,5.024147716490883,4.873206572948329
