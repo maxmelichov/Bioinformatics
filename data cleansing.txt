@@ -1,0 +1,184 @@
+
+import pandas as pd
+import numpy as np
+from scipy import stats
+from scipy.stats import t, norm
+from math import atanh, pow
+from numpy import tanh
+
+
+
+########################
+### Outliers - Python
+########################
+
+######### 
+'''
+Useful links:
+
+Two-sample Kolmogorov-Smirnov Test in Python Scipy: https://stackoverflow.com/questions/10884668/two-sample-kolmogorov-smirnov-test-in-python-scipy
+Fisher r-to-z transformation calculator: http://vassarstats.net/rdiff.html
+build and fill pandas dataframe from for loop (second answer): https://stackoverflow.com/questions/28056171/how-to-build-and-fill-pandas-dataframe-from-for-loop
+'''
+
+
+### outlier matrix
+def getOutliersMatrix(df, threshold=1.5):
+    numeric_columns_names = df.select_dtypes("number").columns
+    numeric_df = df[[name for name in numeric_columns_names]]
+    
+    Q1 = numeric_df.quantile(0.25)
+    Q3 = numeric_df.quantile(0.75)
+    IQR = Q3 - Q1
+    
+    outdata = (numeric_df < (Q1 - 1.5 * IQR)) | (numeric_df > (Q3 + 1.5 * IQR))
+    
+    for name in numeric_df.columns:
+        outdata.loc[(outdata[name] == True), name] = 1
+        outdata.loc[(outdata[name] == False), name] = 0
+    
+    return outdata
+
+
+### differences between two correlation in Python: https://github.com/psinger/CorrelationStats
+
+
+def independent_corr(xy, ab, n, n2 = None, twotailed=True, conf_level=0.95, method='fisher'):
+    """
+    Calculates the statistic significance between two independent correlation coefficients
+    @param xy: correlation coefficient between x and y
+    @param xz: correlation coefficient between a and b
+    @param n: number of elements in xy
+    @param n2: number of elements in ab (if distinct from n)
+    @param twotailed: whether to calculate a one or two tailed test, only works for 'fisher' method
+    @param conf_level: confidence level, only works for 'zou' method
+    @param method: defines the method uses, 'fisher' or 'zou'
+    @return: z and p-val
+    """
+
+    if method == 'fisher':
+        xy_z = 0.5 * np.log((1 + xy)/(1 - xy))
+        ab_z = 0.5 * np.log((1 + ab)/(1 - ab))
+        if n2 is None:
+            n2 = n
+
+        se_diff_r = np.sqrt(1/(n - 3) + 1/(n2 - 3))
+        diff = xy_z - ab_z
+        z = abs(diff / se_diff_r)
+        p = (1 - norm.cdf(z))
+        if twotailed:
+            p *= 2
+
+        return z, p
+    elif method == 'zou':
+        L1 = rz_ci(xy, n, conf_level=conf_level)[0]
+        U1 = rz_ci(xy, n, conf_level=conf_level)[1]
+        L2 = rz_ci(ab, n2, conf_level=conf_level)[0]
+        U2 = rz_ci(ab, n2, conf_level=conf_level)[1]
+        lower = xy - ab - pow((pow((xy - L1), 2) + pow((U2 - ab), 2)), 0.5)
+        upper = xy - ab + pow((pow((U1 - xy), 2) + pow((ab - L2), 2)), 0.5)
+        return lower, upper
+    else:
+        raise Exception('Wrong method!')
+
+def get_df_without_outliers(df, threshold=1.5):
+    numeric_columns_names = df.select_dtypes("number").columns
+    numeric_df = df[[name for name in numeric_columns_names]]
+    
+    Q1 = numeric_df.quantile(0.25)
+    Q3 = numeric_df.quantile(0.75)
+    IQR = Q3 - Q1
+
+    no_outliers_df = numeric_df[(numeric_df >= (Q1 - 1.5 * IQR)) & (numeric_df <= (Q3 + 1.5 * IQR))]
+    
+    return no_outliers_df
+
+
+def OutliersRemoveDecisions(df, y_label, threshold=1.5, significant_level=0.05):
+    numeric_columns_names = df.select_dtypes("number").columns
+    numeric_df = df[[name for name in numeric_columns_names]]
+    
+    with_outliers_df = numeric_df
+    without_outliers_df = get_df_without_outliers(numeric_df, threshold)
+    
+    
+    distribution_change_df = []
+
+    for name in numeric_columns_names:
+        with_outliers_series = with_outliers_df[name]
+        without_outliers_series = without_outliers_df[name]
+    
+        ks_result = stats.ks_2samp(with_outliers_series, without_outliers_series)
+        
+        x_outliers = with_outliers_series
+        x_no_outliers = without_outliers_series
+        
+        xy = x_outliers.corr(y_label, method='spearman')
+        ab = x_no_outliers.corr(y_label, method='spearman')
+                
+        n = x_outliers.shape[0]
+        n2 = x_no_outliers.shape[0]
+        
+        ftz_result = independent_corr(xy, ab, n, n2, method='fisher')
+        totout = np.sum(with_outliers_series.count()) - np.sum(without_outliers_series.count())
+        
+        
+        distribution_change_df.append(
+            {
+                'variable' : name,
+                'outliers_number': '{} ({})'.format(totout, np.round(totout*100/n,2)),
+                'distribution_change': '+' if ks_result[1] < significant_level else '-', #  ks_result[1] -> gives us the p-value
+                'correlation_changed': '+' if ftz_result[1] < significant_level else '-', #  ftz_result[1] -> gives us the p-value
+                'drop': 'no' if ((ks_result[1] < significant_level) & (ftz_result[1] < significant_level)) else 'yes' 
+            }
+        )
+    
+    return pd.DataFrame(distribution_change_df)
+
+
+
+################################
+### Missing values - Python
+################################
+
+def get_missings_matrix(df):
+    missings_matrix_df = df.isna()
+    for name in df.columns:
+        missings_matrix_df.loc[(missings_matrix_df[name] == True), name] = 1
+        missings_matrix_df.loc[(missings_matrix_df[name] == False), name] = 0
+    return missings_matrix_df
+
+def MissingMechanism(df, significant_level=0.05):
+    missing_matt = get_missings_matrix(df)
+    numeric_columns_names = df.select_dtypes("number").columns
+    distribution_change_df = pd.DataFrame()
+    i = 0
+    for numeric_missing_column_name in numeric_columns_names: # -> only numeric variables that have missing values    
+            df_without_na = df[missing_matt[numeric_missing_column_name] == 0]
+            for numeric_column_name in numeric_columns_names: # -> all numeric variables in data: with and without missing values
+                if numeric_missing_column_name != numeric_column_name:
+                    series_with_na = df[numeric_column_name]
+                    series_without_na = df_without_na[numeric_column_name]
+                    ks_result = stats.ks_2samp(series_with_na, series_without_na)
+                    distribution_change_df.append(
+                        {
+                            'var_1_missing' : numeric_missing_column_name,
+                            'var_2': numeric_column_name,
+                            'missings_number': len(numeric_missing_column_name) - len(numeric_column_name), 
+                            'distribution_changed': '+' if ks_result[1] < significant_level else '-', #  ftz_result[1] -> gives us the p-value
+                            'imputation': 'no' if (ks_result[1] < significant_level) else 'yes' 
+                        }
+                    )
+                    print(i)
+                    i = i + 1
+            
+    return pd.DataFrame(distribution_change_df)
+
+
+#####################################
+
+
+OutliersRemoveDecisions(X,y)
+
+MissingMechanism(X,y)
+

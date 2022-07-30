@@ -1,0 +1,44 @@
+def MissingMechanism(df, significant_level=0.05):
+    missing_matt = get_missings_matrix(df)
+    numeric_columns_names = df.select_dtypes("number").columns
+    distribution_change_df = pd.DataFrame()
+    i = 0
+    for numeric_missing_column_name in numeric_columns_names: # -> only numeric variables that have missing values    
+            df_without_na = df[missing_matt[numeric_missing_column_name] == 0]
+            for numeric_column_name in numeric_columns_names: # -> all numeric variables in data: with and without missing values
+                if numeric_missing_column_name != numeric_column_name:
+                    series_with_na = df[numeric_column_name]
+                    series_without_na = df_without_na[numeric_column_name]
+                    ks_result = stats.ks_2samp(series_with_na, series_without_na)
+                    print(significant_level)
+                    print(ks_result[1])
+                    if ks_result[1] < significant_level:
+                        distribution_change_df.append(
+                            {
+                                'var_1_missing' : numeric_missing_column_name,
+                                'var_2': numeric_column_name,
+                                'missings_number': len(numeric_missing_column_name) - len(numeric_column_name), 
+                                # 'distribution_changed': '+' if ks_result[1] < significant_level else '-', #  ftz_result[1] -> gives us the p-value
+                                # 'imputation': 'no' if (ks_result[1] < significant_level) else 'yes' 
+                                'distribution_changed': '+',
+                                'imputation': 'no'
+                            }
+                            ,ignore_index=True
+                        )
+                    else:
+                        distribution_change_df.append(
+                                {
+                                    'var_1_missing' : numeric_missing_column_name,
+                                    'var_2': numeric_column_name,
+                                    'missings_number': len(numeric_missing_column_name) - len(numeric_column_name), 
+                                    # 'distribution_changed': '+' if ks_result[1] < significant_level else '-', #  ftz_result[1] -> gives us the p-value
+                                    # 'imputation': 'no' if (ks_result[1] < significant_level) else 'yes' 
+                                    'distribution_changed': '-',
+                                    'imputation': 'yes'
+                                }
+                                ,ignore_index=True
+                            )       
+                    print(i)
+                    i = i + 1
+            
+    return pd.DataFrame(distribution_change_df)
