@@ -1,6 +1,7 @@
 # Bioinformatics
 ![image](https://user-images.githubusercontent.com/80150303/224673865-e72a9d56-c811-46df-a9b8-47249f317040.png)
 
+https://www.researchgate.net/publication/369253732_Abstract_MP33_Increases_in_the_Ratio_of_Waist_Circumference-Decile_to_Body_Mass_Index-Decile_With_Age_Findings_From_the_National_Health_and_Nutrition_Examination_Survey
 Research about waist circumference 
 
 EPI | LIFESTYLE 2023 Scientific Sessions February 28 - March 3, 2023 | Boston, MA
